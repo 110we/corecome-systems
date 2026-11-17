@@ -396,10 +396,22 @@ i64 vfs_open(const char *path, int flags)
             return -1;
         }
     }
+    /* O_TRUNC(2)：把已有文件清零 */
+    if ((flags & 2) != 0 && n != (ino_t *)0 && n->type == T_FILE) {
+        if (n->data != (char *)0) {
+            kfree(n->data);
+        }
+        n->data = (char *)0;
+        n->size = 0;
+        n->cap = 0;
+    }
     for (i = 3; i < MAX_FD; i++) {
         if (!fds[i].used) {
             fds[i].ino = n;
             fds[i].off = 0;
+            if ((flags & 4) != 0) { /* O_APPEND */
+                fds[i].off = n->size;
+            }
             fds[i].used = 1;
             return (i64)i;
         }
@@ -588,6 +600,76 @@ static void path_num(char *dst, u32 n)
         dst[len++] = tmp[--i];
     }
     dst[len] = '\0';
+}
+
+i64 vfs_dup(int fd)
+{
+    int i;
+
+    if (fd < 0 || fd >= MAX_FD || !fds[fd].used) {
+        return -1;
+    }
+    for (i = 3; i < MAX_FD; i++) {
+        if (!fds[i].used) {
+            fds[i] = fds[fd];
+            return (i64)i;
+        }
+    }
+    return -1;
+}
+
+i64 vfs_rename(const char *oldp, const char *newp)
+{
+    char oname[24];
+    char nname[24];
+    ino_t *op = split_parent(oldp, oname, sizeof(oname));
+    ino_t *np = split_parent(newp, nname, sizeof(nname));
+    ino_t *victim;
+    ino_t **pp;
+
+    if (op == (ino_t *)0 || np == (ino_t *)0) {
+        return -1;
+    }
+    victim = ino_find(op, oname);
+    if (victim == (ino_t *)0) {
+        return -1;
+    }
+    if (ino_find(np, nname) != (ino_t *)0) {
+        return -1; /* 目标已存在 */
+    }
+    pp = &op->child;
+    while (*pp != (ino_t *)0 && *pp != victim) {
+        pp = &(*pp)->sib;
+    }
+    if (*pp == victim) {
+        *pp = victim->sib;
+    }
+    victim->sib = (ino_t *)0;
+    victim->parent = np;
+    if (np->child == (ino_t *)0) {
+        np->child = victim;
+    } else {
+        ino_t *tail = np->child;
+
+        while (tail->sib != (ino_t *)0) {
+            tail = tail->sib;
+        }
+        tail->sib = victim;
+    }
+    str_copy(victim->name, nname, sizeof(victim->name));
+    return 0;
+}
+
+i64 vfs_seek(int fd, i64 off)
+{
+    if (fd < 3 || fd >= MAX_FD || !fds[fd].used) {
+        return -1;
+    }
+    if (off < 0 || (u64)off > fds[fd].ino->size) {
+        return -1;
+    }
+    fds[fd].off = (u64)off;
+    return off;
 }
 
 i64 vfs_size(const char *path)
