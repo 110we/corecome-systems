@@ -450,8 +450,8 @@ user_m4_init_start:
     mov x8, #11
     svc #0x80
     cbnz x0, 2f
-    mov x0, #1                  /* id=1：shell 镜像 */
-    mov x8, #12
+    adr x0, 4f                  /* "/bin/sh"：从 ramfs 加载 shell */
+    mov x8, #19                 /* exec_path */
     svc #0x80
     b .
 2:
@@ -468,6 +468,8 @@ user_m4_init_start:
     .asciz "init: up, starting shell\n"
 3:
     .asciz "init: shell exited\n"
+4:
+    .asciz "/bin/sh"
     .balign 8
 user_m4_init_end:
 
@@ -515,3 +517,204 @@ user_file_start:
     .asciz "/bin/hello"
     .balign 8
 user_file_end:
+
+/* fork 后孩子 exec_path("/bin/hello.bin")，父亲 wait 并打印标记。
+ * 验证的是「从文件系统加载程序」这条路径，而不是内置 blob。 */
+    .balign 8
+    .global user_ep_start
+    .global user_ep_end
+user_ep_start:
+    mov x0, #0
+    mov x8, #11             /* fork */
+    svc #0x80
+    cmp x0, #0
+    b.gt 51f
+    /* 孩子：换掉自己的镜像 */
+    adr x0, 53f
+    mov x8, #19             /* exec_path */
+    svc #0x80
+    mov x0, #1
+    mov x8, #9
+    svc #0x80
+    b .
+51:
+    mvn x0, xzr             /* wait(-1) */
+    mov x8, #13
+    svc #0x80
+    mov x19, x0
+    mov x0, #1
+    adr x1, 54f
+    mov x2, #20
+    mov x8, #4              /* write(1, "...", 20) */
+    svc #0x80
+    mov x0, x19
+    mov x8, #9
+    svc #0x80
+    b .
+53:
+    .asciz "/bin/hello.bin"
+54:
+    .ascii "exec-file: child ok\n"
+    .balign 8
+user_ep_end:
+
+/* 目录操作：mkdir → O_CREAT 建文件 → write → close → unlink 文件 → unlink 目录 */
+    .balign 8
+    .global user_dir_start
+    .global user_dir_end
+user_dir_start:
+    adr x0, 61f
+    mov x8, #20             /* mkdir("/tmp/d") */
+    svc #0x80
+    cmp x0, #0
+    b.ne 69f
+
+    adr x0, 62f
+    mov x1, #1              /* O_CREAT */
+    mov x8, #5              /* open */
+    svc #0x80
+    cmp x0, #0
+    b.lt 69f
+    mov x19, x0
+
+    mov x0, x19
+    adr x1, 64f
+    mov x2, #7
+    mov x8, #4              /* write(fd, "dir ok\n", 7) */
+    svc #0x80
+
+    mov x0, x19
+    mov x8, #7              /* close */
+    svc #0x80
+
+    adr x0, 62f
+    mov x8, #21             /* unlink(file) */
+    svc #0x80
+
+    adr x0, 61f
+    mov x8, #21             /* unlink(dir) */
+    svc #0x80
+
+    mov x0, #1
+    adr x1, 63f
+    mov x2, #12
+    mov x8, #4
+    svc #0x80
+
+    mov x0, #0
+    mov x8, #9
+    svc #0x80
+    b .
+69:
+    mov x0, #1
+    mov x8, #9
+    svc #0x80
+    b .
+61:
+    .asciz "/tmp/d"
+62:
+    .asciz "/tmp/d/f"
+63:
+    .ascii "dir-ops: ok\n"
+64:
+    .ascii "dir ok\n"
+    .balign 8
+user_dir_end:
+
+/* 取文件大小：stat("/hello.txt") 应返回 >0，否则 exit 1 */
+    .balign 8
+    .global user_stat_start
+    .global user_stat_end
+user_stat_start:
+    adr x0, 71f
+    mov x8, #22             /* stat */
+    svc #0x80
+    cmp x0, #0
+    b.le 79f
+    mov x0, #1
+    adr x1, 72f
+    mov x2, #9
+    mov x8, #4
+    svc #0x80
+    mov x0, #0
+    mov x8, #9
+    svc #0x80
+    b .
+79:
+    mov x0, #1
+    mov x8, #9
+    svc #0x80
+    b .
+71:
+    .asciz "/hello.txt"
+72:
+    .ascii "stat: ok\n"
+    .balign 8
+user_stat_end:
+
+/* 取内核 tick：两次调用应单调不减，且至少一次 > 0 */
+    .balign 8
+    .global user_time_start
+    .global user_time_end
+user_time_start:
+    mov x8, #23
+    svc #0x80
+    mov x19, x0
+    mov x8, #23
+    svc #0x80
+    cmp x0, x19
+    b.lt 89f
+    cbz x19, 89f
+    mov x0, #1
+    adr x1, 82f
+    mov x2, #9
+    mov x8, #4
+    svc #0x80
+    mov x0, #0
+    mov x8, #9
+    svc #0x80
+    b .
+89:
+    mov x0, #1
+    mov x8, #9
+    svc #0x80
+    b .
+82:
+    .ascii "time: ok\n"
+    .balign 8
+user_time_end:
+
+/* 睡 4 个 tick：醒来后时间必须前进 >= 4 */
+    .balign 8
+    .global user_sleep_start
+    .global user_sleep_end
+user_sleep_start:
+    mov x8, #23             /* t0 */
+    svc #0x80
+    mov x19, x0
+    mov x0, #4
+    mov x8, #24             /* sleep(4) */
+    svc #0x80
+    mov x8, #23             /* t1 */
+    svc #0x80
+    sub x1, x0, x19
+    cmp x1, #4
+    b.lt 99f
+    mov x0, #1
+    adr x1, 92f
+    mov x2, #10
+    mov x8, #4
+    svc #0x80
+    mov x0, #0
+    mov x8, #9
+    svc #0x80
+    b .
+99:
+    mov x0, #1
+    mov x8, #9
+    svc #0x80
+    b .
+92:
+    .ascii "sleep: ok\n"
+    .balign 8
+user_sleep_end:

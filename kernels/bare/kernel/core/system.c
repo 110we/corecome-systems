@@ -182,6 +182,8 @@ void do_sync(u64 *f)
 
             if (from_el0 && f[8] == 12) { /* SYS_EXEC：换掉地址空间，返回路径直接 eret 进新程序 */
                 proc_exec(f, f[0]);
+            } else if (from_el0 && f[8] == 19) { /* SYS_EXEC_PATH */
+                proc_exec_path(f, f[0]);
             } else if (from_el0 && f[8] == 11) { /* SYS_FORK */
                 f[0] = (u64)(i64)proc_fork(f);
             } else if (from_el0 && f[8] == 16) { /* SYS_CLONE */
@@ -633,6 +635,11 @@ int kmain(u64 dtb)
     mm_init();
     puts_("[kern] init: vfs\n");
     vfs_init();
+    if (vfs_selftest()) {
+        puts_("[kern] vfs: inode stress ok\n");
+    } else {
+        puts_("[kern] vfs: inode stress FAIL\n");
+    }
     puts_("[kern] init: sched\n");
     sched_init();
     puts_("[kern] init: done\n");
@@ -686,6 +693,20 @@ int kmain(u64 dtb)
             } else {
                 puts_("[kern] ext2: read failed\n");
             }
+            /* 挂载点路径：通过 VFS 再读一次同一个文件 */
+            {
+                i64 fd = vfs_open("/mnt/hello.txt", 0);
+                char mb[64];
+                i64 mn = fd >= 0 ? vfs_read(fd, mb, sizeof(mb) - 1) : -1;
+
+                if (mn > 0) {
+                    mb[mn] = '\0';
+                    printk("[kern] vfs: ext2 mount ok: %s", mb);
+                    vfs_close(fd);
+                } else {
+                    puts_("[kern] vfs: ext2 mount FAIL\n");
+                }
+            }
         } else {
             puts_("[kern] ext2: no fs found\n");
         }
@@ -736,6 +757,26 @@ int kmain(u64 dtb)
         puts_("[kern] user: create thread u6 failed\n");
     }
     /* 第八个：信号 —— kill 一个死循环的子进程，wait 拿 -15。 */
+    /* 第十四个：EL0 睡眠（SYS_SLEEP）。 */
+    if (kthread_create("ud", user_sleep_thread, (void *)0) < 0) {
+        puts_("[kern] user: create thread ud failed\n");
+    }
+    /* 第十三个：EL0 读内核 tick（SYS_TIME）。 */
+    if (kthread_create("uc", user_time_thread, (void *)0) < 0) {
+        puts_("[kern] user: create thread uc failed\n");
+    }
+    /* 第十二个：EL0 取文件大小（SYS_STAT）。 */
+    if (kthread_create("ub", user_stat_thread, (void *)0) < 0) {
+        puts_("[kern] user: create thread ub failed\n");
+    }
+    /* 第十一个：EL0 程序的目录操作（mkdir / O_CREAT / unlink）。 */
+    if (kthread_create("ua", user_dir_thread, (void *)0) < 0) {
+        puts_("[kern] user: create thread ua failed\n");
+    }
+    /* 第十个：EL0 程序 fork 后从文件 exec（/bin/hello.bin）。 */
+    if (kthread_create("u9", user_ep_thread, (void *)0) < 0) {
+        puts_("[kern] user: create thread u9 failed\n");
+    }
     /* 第九个：EL0 程序通过 VFS 读文件（/bin/hello）。 */
     if (kthread_create("u8", user_file_thread, (void *)0) < 0) {
         puts_("[kern] user: create thread u8 failed\n");

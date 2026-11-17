@@ -28,6 +28,16 @@ extern const u8 user_thr_end[];
 extern const u8 user_sig_start[];
 extern const u8 user_sig_end[];
 extern const u8 user_file_start[];
+extern const u8 user_sleep_start[];
+extern const u8 user_sleep_end[];
+extern const u8 user_time_start[];
+extern const u8 user_time_end[];
+extern const u8 user_stat_start[];
+extern const u8 user_stat_end[];
+extern const u8 user_dir_start[];
+extern const u8 user_dir_end[];
+extern const u8 user_ep_start[];
+extern const u8 user_ep_end[];
 extern const u8 user_file_end[];
 extern const u8 user_m4_init_start[];
 extern const u8 user_m4_init_end[];
@@ -106,6 +116,41 @@ static void user_spawn(const u8 *blob, const u8 *blob_end, const char *tag)
     sched_set_l1((u64 *)0);
     pg_activate((u64 *)0);
     kthread_exit();
+}
+
+/* 睡眠靶子：sleep(4) 之后 tick 至少前进 4。 */
+void user_sleep_thread(void *arg)
+{
+    (void)arg;
+    user_spawn(user_sleep_start, user_sleep_end, "sleep");
+}
+
+/* tick 靶子：两次 SYS_TIME 单调不减。 */
+void user_time_thread(void *arg)
+{
+    (void)arg;
+    user_spawn(user_time_start, user_time_end, "time");
+}
+
+/* stat 靶子：查文件大小。 */
+void user_stat_thread(void *arg)
+{
+    (void)arg;
+    user_spawn(user_stat_start, user_stat_end, "stat");
+}
+
+/* 目录操作靶子：mkdir / O_CREAT / write / unlink。 */
+void user_dir_thread(void *arg)
+{
+    (void)arg;
+    user_spawn(user_dir_start, user_dir_end, "dirops");
+}
+
+/* exec-by-path 靶子：fork 后孩子从 ramfs 加载镜像。 */
+void user_ep_thread(void *arg)
+{
+    (void)arg;
+    user_spawn(user_ep_start, user_ep_end, "execfile");
 }
 
 /* 读文件程序：走 VFS open/read，把文件内容打到控制台。 */
