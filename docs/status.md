@@ -14,13 +14,14 @@
 | 中断控制器 | ✅ GICv2 | ✅ GICv2 | ❌ |
 | 定时器 | ✅ 100Hz | ✅ 就绪（IRQ 屏蔽） | ❌ |
 | 调度器 | 🟡 固定片轮转、单核 | ❌ | ❌ |
-| 用户态 EL0 | ✅ init + shell | ❌ | ❌ |
-| 系统调用 | ✅ 18 号 | ❌ | ❌ |
+| 用户态 EL0 | ✅ init + shell；可 open/read/mkdir/unlink/stat/time/sleep | ❌ | ❌ |
+| 系统调用 | ✅ 25 号（含 exec_path / mkdir / unlink / stat / time / sleep） | ❌ | ❌ |
 | fork / COW / clone / 信号 | ✅ | ❌ | ❌ |
-| VFS + ramfs | ✅ | ❌ | ❌ |
-| ext2（只读） | ✅ | ❌ | ❌ |
+| VFS + ramfs | ✅ 目录/文件创建删除、64 KiB 单文件上限 | ❌ | ❌ |
+| ext2（只读，挂载到 /mnt） | ✅ 经 VFS 路径可读 | ❌ | ❌ |
 | virtio-blk | ✅ | ❌ | ❌ |
 | 设备树驱动注册表 | ✅ 分支实现（M5） | ❌ | ❌ |
+| exec-by-path（从 ramfs 加载程序） | ✅ M4 的 init 已走 `/bin/sh` | ❌ | ❌ |
 | 安全组件 | ❌ | 🟡 Key Vault + 模块注册表 | ❌ |
 | 网络栈 | ❌ | ❌ | ❌ |
 
