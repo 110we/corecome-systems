@@ -15,7 +15,7 @@
 | 定时器 | ✅ 100Hz | ✅ 就绪（IRQ 屏蔽） | ❌ |
 | 调度器 | 🟡 固定片轮转、单核 | ❌ | ❌ |
 | 用户态 EL0 | ✅ init + shell；可 open/read/mkdir/unlink/stat/time/sleep | ❌ | ❌ |
-| 系统调用 | ✅ 25 号（含 exec_path / mkdir / unlink / stat / time / sleep） | ❌ | ❌ |
+| 系统调用 | ✅ 29 号（含 exec_path / mkdir / unlink / stat / time / sleep / seek / rename / dup / pipe） | ❌ | ❌ |
 | fork / COW / clone / 信号 | ✅ | ❌ | ❌ |
 | VFS + ramfs | ✅ 目录/文件创建删除、64 KiB 单文件上限 | ❌ | ❌ |
 | ext2（只读，挂载到 /mnt） | ✅ 经 VFS 路径可读 | ❌ | ❌ |
