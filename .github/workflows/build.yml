@@ -1,0 +1,46 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 三个内核构建 + 启动检查
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装交叉编译器与 QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu qemu-system-arm e2fsprogs
+
+      - name: 构建全部
+        run: make
+
+      - name: bare 全量自检
+        run: make test
+
+      - name: COXVBN 启动检查
+        run: |
+          set -o pipefail
+          timeout 15 qemu-system-aarch64 -M virt,gic-version=2 -cpu cortex-a53 \
+            -display none -monitor none -serial file:/tmp/coxvbn.log \
+            -kernel kernels/coxvbn/build/coxvbn.bin || true
+          cat /tmp/coxvbn.log
+          grep -q "PHYSICAL ALLOCATOR SELFTEST PASS" /tmp/coxvbn.log
+          grep -q "MMU ENABLED" /tmp/coxvbn.log
+          grep -q "ARM GENERIC TIMER READY" /tmp/coxvbn.log
+
+      - name: OpenKernel 启动检查
+        run: |
+          set -o pipefail
+          timeout 15 qemu-system-aarch64 -M virt,gic-version=2 -cpu cortex-a53 \
+            -display none -monitor none -serial file:/tmp/openkernel.log \
+            -kernel kernels/openkernel/build/openkernel.elf || true
+          cat /tmp/openkernel.log
+          grep -q "OpenKernel: independent AArch64 kernel entry reached." /tmp/openkernel.log
